@@ -21,15 +21,14 @@ from contextlib import contextmanager
 app = FastAPI(title="Real Estate Asset Brain API")
 
 # UPDATED CORS Configuration for production
-ALLOWED_ORIGINS = os.getenv("FRONTEND_URL", "http://localhost:3000")
+FRONTEND_URL = os.getenv("FRONTEND_URL", "http://localhost:3000")
 
 app.add_middleware(
     CORSMiddleware,
     allow_origins=[
-        ALLOWED_ORIGINS,
+        FRONTEND_URL,
         "http://localhost:3000",
-        "https://*.vercel.app",  # All Vercel deployments
-        "https://*.netlify.app",  # All Netlify deployments
+        "https://real-estate-asset-intelligence-syst.vercel.app",  # Your exact Vercel URL
     ],
     allow_credentials=True,
     allow_methods=["*"],
