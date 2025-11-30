@@ -9,20 +9,48 @@ import base64
 from datetime import datetime, timedelta
 import sqlite3
 from contextlib import contextmanager
+import os
+from fastapi import FastAPI, UploadFile, File, HTTPException
+from fastapi.middleware.cors import CORSMiddleware
+from pydantic import BaseModel
+from typing import List, Optional
+import json
+from datetime import datetime, timedelta
+import sqlite3
+from contextlib import contextmanager
 
 app = FastAPI(title="Real Estate Asset Brain API")
 
-# CORS middleware
+# UPDATED CORS Configuration for production
+ALLOWED_ORIGINS = os.getenv("FRONTEND_URL", "http://localhost:3000")
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=[
+        ALLOWED_ORIGINS,
+        "http://localhost:3000",
+        "https://*.vercel.app",  # All Vercel deployments
+        "https://*.netlify.app",  # All Netlify deployments
+    ],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
 
+# UPDATED Database path for persistent storage
+DATA_DIR = os.getenv("DATA_DIR", "./data")
+os.makedirs(DATA_DIR, exist_ok=True)
+DB_PATH = os.path.join(DATA_DIR, "real_estate.db")
+
+app = FastAPI(title="Real Estate Asset Brain API")
+
+
 # Database setup
-DB_PATH = "real_estate.db"
+DATA_DIR = os.getenv("DATA_DIR", ".")
+DB_PATH = os.path.join(DATA_DIR, "real_estate.db")
+
+# Create data directory if it doesn't exist
+os.makedirs(DATA_DIR, exist_ok=True)
 
 @contextmanager
 def get_db():

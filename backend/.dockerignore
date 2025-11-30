@@ -1,0 +1,18 @@
+touch backend/.dockerignore
+```
+
+Add:
+```
+__pycache__
+*.pyc
+*.pyo
+*.pyd
+.Python
+*.so
+*.db
+venv/
+env/
+.env
+.git
+.gitignore
+*.log
