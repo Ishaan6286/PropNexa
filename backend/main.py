@@ -1,13 +1,3 @@
-from fastapi import FastAPI, UploadFile, File, HTTPException
-from fastapi.middleware.cors import CORSMiddleware
-from pydantic import BaseModel
-from typing import List, Optional
-import os
-import json
-import base64
-from datetime import datetime, timedelta
-import sqlite3
-from contextlib import contextmanager
 import os
 from fastapi import FastAPI, UploadFile, File, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
@@ -26,9 +16,10 @@ FRONTEND_URL = os.getenv("FRONTEND_URL", "http://localhost:3000")
 app.add_middleware(
     CORSMiddleware,
     allow_origins=[
-        FRONTEND_URL,
-        "http://localhost:3000",
-        "https://real-estate-asset-intelligence-syst.vercel.app",  # Your exact Vercel URL
+        FRONTEND_URL,  # Your Vercel URL
+        "http://localhost:3000",  # Local development
+        "https://real-estate-asset-intelligence-syst.vercel.app",  # Explicit URL
+        "https://*.vercel.app",  # All Vercel preview URLs
     ],
     allow_credentials=True,
     allow_methods=["*"],
