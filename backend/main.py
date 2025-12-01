@@ -8,38 +8,29 @@ from datetime import datetime, timedelta
 import sqlite3
 from contextlib import contextmanager
 
-app = FastAPI(title="Real Estate Asset Brain API")
-
-# UPDATED CORS Configuration for production
 FRONTEND_URL = os.getenv("FRONTEND_URL", "http://localhost:3000")
 
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=[
-        FRONTEND_URL,  # Your Vercel URL
-        "http://localhost:3000",  # Local development
-        "https://real-estate-asset-intelligence-syst.vercel.app",  # Explicit URL
-        "https://*.vercel.app",  # All Vercel preview URLs
-    ],
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
-)
-
-# UPDATED Database path for persistent storage
 DATA_DIR = os.getenv("DATA_DIR", "./data")
 os.makedirs(DATA_DIR, exist_ok=True)
 DB_PATH = os.path.join(DATA_DIR, "real_estate.db")
 
 app = FastAPI(title="Real Estate Asset Brain API")
 
+allow_origins = [
+    FRONTEND_URL,
+    "http://localhost:3000",
+]
 
-# Database setup
-DATA_DIR = os.getenv("DATA_DIR", ".")
-DB_PATH = os.path.join(DATA_DIR, "real_estate.db")
+allow_origin_regex = r"^https://.*\.vercel\.app$"
 
-# Create data directory if it doesn't exist
-os.makedirs(DATA_DIR, exist_ok=True)
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=allow_origins,
+    allow_origin_regex=allow_origin_regex,
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 
 @contextmanager
 def get_db():
@@ -51,11 +42,9 @@ def get_db():
         conn.close()
 
 def init_db():
-    """Initialize SQLite database with schema"""
     with get_db() as conn:
         cursor = conn.cursor()
         
-        # Properties table
         cursor.execute("""
             CREATE TABLE IF NOT EXISTS properties (
                 id TEXT PRIMARY KEY,
@@ -70,7 +59,6 @@ def init_db():
             )
         """)
         
-        # Maintenance issues table
         cursor.execute("""
             CREATE TABLE IF NOT EXISTS maintenance_issues (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -86,7 +74,6 @@ def init_db():
             )
         """)
         
-        # Documents table
         cursor.execute("""
             CREATE TABLE IF NOT EXISTS documents (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -102,16 +89,13 @@ def init_db():
         
         conn.commit()
         
-        # Insert sample data if empty
         cursor.execute("SELECT COUNT(*) FROM properties")
         if cursor.fetchone()[0] == 0:
             insert_sample_data(conn)
 
 def insert_sample_data(conn):
-    """Insert sample data for demo"""
     cursor = conn.cursor()
     
-    # Sample properties
     properties = [
         ("12_elm_street", "12 Elm Street", "Commercial", "Acme Corp", "Triple Net", 5000, "2023-01-15", "2028-01-14"),
         ("45_oak_avenue", "45 Oak Avenue", "Residential", "Smith Family", "Gross Lease", 2500, "2024-01-01", "2025-06-30"),
@@ -124,7 +108,6 @@ def insert_sample_data(conn):
             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
         """, (*prop, datetime.now().isoformat()))
     
-    # Sample maintenance issues
     issues = [
         ("12_elm_street", "roof", "Water infiltration northeast corner", "2023-03-15", "Resolved", 3200, "ABC Roofing"),
         ("45_oak_avenue", "heating", "HVAC system failure - no heat", "2023-11-20", "Resolved", 1500, "Climate Control Co"),
@@ -141,10 +124,8 @@ def insert_sample_data(conn):
     
     conn.commit()
 
-# Initialize database on startup
 init_db()
 
-# Pydantic models
 class Property(BaseModel):
     id: str
     address: str
@@ -173,14 +154,12 @@ class QueryResponse(BaseModel):
     data: List[dict]
     query_type: str
 
-# API Endpoints
 @app.get("/")
 async def root():
     return {"message": "Real Estate Asset Brain API", "status": "running"}
 
 @app.get("/api/properties")
 async def get_properties():
-    """Get all properties"""
     with get_db() as conn:
         cursor = conn.cursor()
         cursor.execute("SELECT * FROM properties")
@@ -189,17 +168,13 @@ async def get_properties():
 
 @app.get("/api/properties/{property_id}")
 async def get_property(property_id: str):
-    """Get single property with maintenance history"""
     with get_db() as conn:
         cursor = conn.cursor()
-        
-        # Get property
         cursor.execute("SELECT * FROM properties WHERE id = ?", (property_id,))
         prop = cursor.fetchone()
         if not prop:
             raise HTTPException(status_code=404, detail="Property not found")
         
-        # Get maintenance issues
         cursor.execute("SELECT * FROM maintenance_issues WHERE property_id = ?", (property_id,))
         issues = cursor.fetchall()
         
@@ -210,7 +185,6 @@ async def get_property(property_id: str):
 
 @app.get("/api/maintenance")
 async def get_maintenance():
-    """Get all maintenance issues"""
     with get_db() as conn:
         cursor = conn.cursor()
         cursor.execute("""
@@ -224,15 +198,11 @@ async def get_maintenance():
 
 @app.post("/api/query")
 async def query_brain(request: QueryRequest):
-    """Natural language query endpoint"""
     query = request.query.lower()
     
     with get_db() as conn:
         cursor = conn.cursor()
         
-        # Pattern matching for different query types
-        
-        # Roof repairs at specific property
         if "roof" in query and ("elm" in query or "12" in query):
             cursor.execute("""
                 SELECT * FROM maintenance_issues 
@@ -240,7 +210,6 @@ async def query_brain(request: QueryRequest):
                 ORDER BY date DESC
             """)
             issues = [dict(row) for row in cursor.fetchall()]
-            
             if issues:
                 latest = issues[0]
                 return QueryResponse(
@@ -249,7 +218,6 @@ async def query_brain(request: QueryRequest):
                     query_type="maintenance_history"
                 )
         
-        # Heating complaints in specific year
         elif "heating" in query and "2023" in query:
             cursor.execute("""
                 SELECT m.*, p.address 
@@ -258,14 +226,12 @@ async def query_brain(request: QueryRequest):
                 WHERE m.category = 'heating' AND m.date LIKE '2023%'
             """)
             issues = [dict(row) for row in cursor.fetchall()]
-            
             return QueryResponse(
                 answer=f"Found {len(issues)} heating complaint(s) in 2023.",
                 data=issues,
                 query_type="filtered_maintenance"
             )
         
-        # Expiring leases
         elif "lease" in query and ("expir" in query or "end" in query):
             six_months = (datetime.now() + timedelta(days=180)).strftime("%Y-%m-%d")
             cursor.execute("""
@@ -274,14 +240,12 @@ async def query_brain(request: QueryRequest):
                 ORDER BY lease_end_date
             """, (six_months, datetime.now().strftime("%Y-%m-%d")))
             props = [dict(row) for row in cursor.fetchall()]
-            
             return QueryResponse(
                 answer=f"Found {len(props)} lease(s) expiring in the next 6 months.",
                 data=props,
                 query_type="expiring_leases"
             )
         
-        # Maintenance costs
         elif "maintenance" in query and "cost" in query:
             cursor.execute("""
                 SELECT p.address, SUM(m.cost) as total_cost, COUNT(*) as issue_count
@@ -291,25 +255,21 @@ async def query_brain(request: QueryRequest):
             """)
             costs = [dict(row) for row in cursor.fetchall()]
             total = sum(c['total_cost'] for c in costs)
-            
             return QueryResponse(
                 answer=f"Total maintenance costs across all properties: ${total:,.2f}",
                 data=costs,
                 query_type="financial_summary"
             )
         
-        # Triple Net lease info
         elif "triple net" in query or "nnn" in query:
             cursor.execute("SELECT * FROM properties WHERE lease_type = 'Triple Net'")
             props = [dict(row) for row in cursor.fetchall()]
-            
             return QueryResponse(
-                answer=f"Found {len(props)} Triple Net Lease properties. In NNN leases, tenants pay property taxes, insurance, and maintenance costs in addition to base rent.",
+                answer=f"Found {len(props)} Triple Net Lease properties.",
                 data=props,
                 query_type="lease_type_info"
             )
         
-        # Recurring issues
         elif "recurring" in query or "multiple" in query:
             cursor.execute("""
                 SELECT property_id, category, COUNT(*) as occurrence_count, 
@@ -320,14 +280,12 @@ async def query_brain(request: QueryRequest):
                 ORDER BY occurrence_count DESC
             """)
             recurring = [dict(row) for row in cursor.fetchall()]
-            
             return QueryResponse(
                 answer=f"Found {len(recurring)} recurring maintenance issues across properties.",
                 data=recurring,
                 query_type="recurring_issues"
             )
         
-        # Default: general statistics
         else:
             cursor.execute("SELECT COUNT(*) as count FROM properties")
             prop_count = cursor.fetchone()['count']
@@ -339,19 +297,15 @@ async def query_brain(request: QueryRequest):
             active_issues = cursor.fetchone()['count']
             
             return QueryResponse(
-                answer=f"System Overview: {prop_count} properties, ${total_rent:,.2f} total monthly rent, {active_issues} active maintenance issues. Try asking about specific properties, maintenance history, or expiring leases.",
+                answer=f"System Overview: {prop_count} properties, ${total_rent:,.2f} total monthly rent, {active_issues} active maintenance issues.",
                 data=[],
                 query_type="system_overview"
             )
 
 @app.post("/api/upload")
 async def upload_document(file: UploadFile = File(...), property_id: str = None):
-    """Upload and process document with AI extraction"""
-    
-    # Read file content
     content = await file.read()
     
-    # Simulate AI extraction (in production, use Claude API)
     extracted_data = {
         "filename": file.filename,
         "upload_date": datetime.now().isoformat(),
@@ -359,7 +313,6 @@ async def upload_document(file: UploadFile = File(...), property_id: str = None)
         "type": file.content_type
     }
     
-    # Store in database
     with get_db() as conn:
         cursor = conn.cursor()
         cursor.execute("""
@@ -380,12 +333,11 @@ async def upload_document(file: UploadFile = File(...), property_id: str = None)
         "status": "success",
         "document_id": doc_id,
         "extracted_data": extracted_data,
-        "message": f"Document '{file.filename}' processed and indexed successfully"
+        "message": f"Document '{file.filename}' processed successfully"
     }
 
 @app.get("/api/documents")
 async def get_documents():
-    """Get all documents"""
     with get_db() as conn:
         cursor = conn.cursor()
         cursor.execute("SELECT * FROM documents ORDER BY upload_date DESC")
@@ -394,27 +346,21 @@ async def get_documents():
 
 @app.get("/api/analytics")
 async def get_analytics():
-    """Get system analytics"""
     with get_db() as conn:
         cursor = conn.cursor()
         
-        # Total properties
         cursor.execute("SELECT COUNT(*) as count FROM properties")
         total_properties = cursor.fetchone()['count']
         
-        # Total monthly rent
         cursor.execute("SELECT SUM(rent_amount) as total FROM properties")
         total_rent = cursor.fetchone()['total']
         
-        # Active issues
         cursor.execute("SELECT COUNT(*) as count FROM maintenance_issues WHERE status = 'In Progress'")
         active_issues = cursor.fetchone()['count']
         
-        # Total maintenance cost
         cursor.execute("SELECT SUM(cost) as total FROM maintenance_issues")
         total_maintenance = cursor.fetchone()['total']
         
-        # Issues by category
         cursor.execute("""
             SELECT category, COUNT(*) as count, SUM(cost) as total_cost
             FROM maintenance_issues
@@ -432,4 +378,4 @@ async def get_analytics():
 
 if __name__ == "__main__":
     import uvicorn
-    uvicorn.run(app, host="0.0.0.0", port=8000)
+    uvicorn.run(app, host="0.0.0.0", port=int(os.getenv("PORT", 8000)))
