@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { Building2, FileText, AlertCircle, Search, Upload, Wrench, DollarSign, Users, TrendingUp } from 'lucide-react';
 
-const API_BASE = process.env.REACT_APP_API_URL || 'http://localhost:8000';
+const API_BASE = (process.env.REACT_APP_API_URL || 'http://localhost:8000').replace(/\/$/, '');
 
 function App() {
   const [properties, setProperties] = useState([]);
