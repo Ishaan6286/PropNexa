@@ -1,5 +1,5 @@
 import os
-from fastapi import FastAPI, UploadFile, File, HTTPException
+from fastapi import FastAPI, UploadFile, File, HTTPException, Form
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 from typing import List, Optional
@@ -55,6 +55,8 @@ def init_db():
                 rent_amount REAL,
                 lease_start_date TEXT,
                 lease_end_date TEXT,
+                landlord_name TEXT,
+                pan_number TEXT,
                 created_at TEXT
             )
         """)
@@ -87,44 +89,75 @@ def init_db():
             )
         """)
         
-        conn.commit()
+        # Create users table
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS users (
+                id TEXT PRIMARY KEY,
+                username TEXT UNIQUE,
+                password TEXT,
+                role TEXT,
+                property_id TEXT
+            )
+        """)
         
-        cursor.execute("SELECT COUNT(*) FROM properties")
+        # Check if users exist and insert seed data
+        cursor.execute("SELECT count(*) FROM users")
         if cursor.fetchone()[0] == 0:
-            insert_sample_data(conn)
+            users = [
+                ("user_owner", "Ishaan", "Ishaan123", "owner", None),
+                ("user_tenant_1", "Chintu", "Chintu123", "tenant", "mumbai_galaxy"),
+                ("user_tenant_2", "suresh", "tenant123", "tenant", "bangalore_tech"),
+            ]
+            cursor.executemany("INSERT INTO users VALUES (?, ?, ?, ?, ?)", users)
 
-def insert_sample_data(conn):
-    cursor = conn.cursor()
-    
-    properties = [
-        ("12_elm_street", "12 Elm Street", "Commercial", "Acme Corp", "Triple Net", 5000, "2023-01-15", "2028-01-14"),
-        ("45_oak_avenue", "45 Oak Avenue", "Residential", "Smith Family", "Gross Lease", 2500, "2024-01-01", "2025-06-30"),
-        ("78_pine_road", "78 Pine Road", "Mixed Use", "Tech Startup Inc", "Modified Gross", 7500, "2024-06-01", "2026-12-31"),
-    ]
-    
-    for prop in properties:
-        cursor.execute("""
-            INSERT INTO properties (id, address, type, tenant_name, lease_type, rent_amount, lease_start_date, lease_end_date, created_at)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-        """, (*prop, datetime.now().isoformat()))
-    
-    issues = [
-        ("12_elm_street", "roof", "Water infiltration northeast corner", "2023-03-15", "Resolved", 3200, "ABC Roofing"),
-        ("45_oak_avenue", "heating", "HVAC system failure - no heat", "2023-11-20", "Resolved", 1500, "Climate Control Co"),
-        ("12_elm_street", "plumbing", "Bathroom leak on 2nd floor", "2024-02-10", "Resolved", 450, "Quick Plumbers"),
-        ("78_pine_road", "electrical", "Circuit breaker tripping issues", "2024-05-22", "In Progress", 0, "ElectroFix"),
-        ("12_elm_street", "plumbing", "Kitchen sink backup", "2024-08-15", "Resolved", 350, "Quick Plumbers"),
-    ]
-    
-    for issue in issues:
-        cursor.execute("""
-            INSERT INTO maintenance_issues (property_id, category, description, date, status, cost, vendor, created_at)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-        """, (*issue, datetime.now().isoformat()))
-    
-    conn.commit()
+        # Insert sample properties if empty
+        cursor.execute("SELECT count(*) FROM properties")
+        if cursor.fetchone()[0] == 0:
+            properties = [
+                ("mumbai_galaxy", "101, Galaxy Heights, Bandra West, Mumbai", "Residential", "Chintu", "11-Month Agreement", 85000, "2024-01-01", "2024-12-31", "Ishaan Chawla", "ABCPV1234A"),
+                ("bangalore_tech", "Unit 402, Tech Park View, Koramangala, Bangalore", "Commercial", "Innovate Solutions Pvt Ltd", "Triple Net", 150000, "2023-04-01", "2026-03-31", "Ishaan Chawla", "XYZPM5678B"),
+                ("delhi_villa", "Villa 12, Green Park, South Delhi", "Residential", "Mehta Family", "Standard Lease", 120000, "2024-06-01", "2025-05-31", "Ishaan Chawla", "PQRSJ9012C"),
+            ]
+            
+            for prop in properties:
+                cursor.execute("""
+                    INSERT INTO properties (id, address, type, tenant_name, lease_type, rent_amount, lease_start_date, lease_end_date, landlord_name, pan_number, created_at)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """, (*prop, datetime.now().isoformat()))
+            
+            issues = [
+                ("mumbai_galaxy", "plumbing", "Monsoon leakage in master bedroom wall", "2024-07-15", "Resolved", 4500, "QuickFix Utilities"),
+                ("bangalore_tech", "electrical", "UPS Battery replacement for server room", "2024-02-20", "Resolved", 12000, "PowerSafe Ltd"),
+                ("mumbai_galaxy", "electrical", "Geyser switch burnout", "2024-08-10", "Resolved", 850, "Local Electrician"),
+                ("delhi_villa", "gardening", "Seasonal lawn maintenance and pruning", "2024-09-05", "In Progress", 2500, "Green Thumbs"),
+                ("mumbai_galaxy", "painting", "Living room touch-up paint", "2024-01-10", "Resolved", 15000, "Asian Paints Service"),
+            ]
+            
+            for issue in issues:
+                cursor.execute("""
+                    INSERT INTO maintenance_issues (property_id, category, description, date, status, cost, vendor, created_at)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                """, (*issue, datetime.now().isoformat()))
+        
+        conn.commit()
+
 
 init_db()
+
+class LoginRequest(BaseModel):
+    username: str
+    password: str
+
+@app.post("/api/login")
+async def login(creds: LoginRequest):
+    with get_db() as conn:
+        cursor = conn.cursor()
+        cursor.execute("SELECT id, username, role, property_id FROM users WHERE username = ? AND password = ?", (creds.username, creds.password))
+        user = cursor.fetchone()
+        
+        if user:
+            return {"status": "success", "user": {"id": user[0], "username": user[1], "role": user[2], "property_id": user[3]}}
+        return {"status": "error", "message": "Invalid credentials"}
 
 class Property(BaseModel):
     id: str
@@ -135,6 +168,8 @@ class Property(BaseModel):
     rent_amount: Optional[float]
     lease_start_date: Optional[str]
     lease_end_date: Optional[str]
+    landlord_name: Optional[str]
+    pan_number: Optional[str]
 
 class MaintenanceIssue(BaseModel):
     id: Optional[int]
@@ -196,6 +231,78 @@ async def get_maintenance():
         rows = cursor.fetchall()
         return [dict(row) for row in rows]
 
+class MaintenanceCreateRequest(BaseModel):
+    property_id: str
+    category: str
+    description: str
+
+@app.post("/api/maintenance")
+async def create_maintenance_issue(issue: MaintenanceCreateRequest):
+    with get_db() as conn:
+        cursor = conn.cursor()
+        cursor.execute("""
+            INSERT INTO maintenance_issues (property_id, category, description, date, status, cost, vendor, created_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+        """, (
+            issue.property_id,
+            issue.category,
+            issue.description,
+            datetime.now().strftime("%Y-%m-%d"),
+            "Open",
+            0.0,
+            "Pending Assignment",
+            datetime.now().isoformat()
+        ))
+        conn.commit()
+    return {"status": "success", "message": "Issue reported successfully"}
+
+class TenantOnboardingRequest(BaseModel):
+    username: str
+    password: str
+    name: str
+    property_id: str
+    rent_amount: float
+    lease_start: str
+    lease_end: str
+
+@app.post("/api/tenants")
+async def onboard_tenant(data: TenantOnboardingRequest):
+    import uuid
+    with get_db() as conn:
+        cursor = conn.cursor()
+        
+        # Check username
+        cursor.execute("SELECT 1 FROM users WHERE username = ?", (data.username,))
+        if cursor.fetchone():
+             return {"status": "error", "message": "Username already taken"}
+
+        # Create Uer
+        user_id = f"user_{str(uuid.uuid4())[:8]}"
+        cursor.execute("INSERT INTO users VALUES (?, ?, ?, ?, ?)", 
+                      (user_id, data.username, data.password, "tenant", data.property_id))
+
+        # Update Property
+        cursor.execute("""
+            UPDATE properties 
+            SET tenant_name = ?, rent_amount = ?, lease_start_date = ?, lease_end_date = ?
+            WHERE id = ?
+        """, (data.name, data.rent_amount, data.lease_start, data.lease_end, data.property_id))
+        
+        conn.commit()
+    
+    return {"status": "success", "message": "Tenant onboarded successfully"}
+
+class MaintenanceStatusUpdate(BaseModel):
+    status: str
+
+@app.put("/api/maintenance/{issue_id}/status")
+async def update_maintenance_status(issue_id: int, update: MaintenanceStatusUpdate):
+    with get_db() as conn:
+        cursor = conn.cursor()
+        cursor.execute("UPDATE maintenance_issues SET status = ? WHERE id = ?", (update.status, issue_id))
+        conn.commit()
+    return {"status": "success", "message": "Status updated"}
+
 @app.post("/api/query")
 async def query_brain(request: QueryRequest):
     query = request.query.lower()
@@ -203,17 +310,17 @@ async def query_brain(request: QueryRequest):
     with get_db() as conn:
         cursor = conn.cursor()
         
-        if "roof" in query and ("elm" in query or "12" in query):
+        if "plumbing" in query and ("mumbai" in query or "galaxy" in query):
             cursor.execute("""
                 SELECT * FROM maintenance_issues 
-                WHERE property_id = '12_elm_street' AND category = 'roof'
+                WHERE property_id = 'mumbai_galaxy' AND category = 'plumbing'
                 ORDER BY date DESC
             """)
             issues = [dict(row) for row in cursor.fetchall()]
             if issues:
                 latest = issues[0]
                 return QueryResponse(
-                    answer=f"The roof at 12 Elm Street was last repaired on {latest['date']} by {latest['vendor']} (${latest['cost']:,.2f}). Issue: {latest['description']}",
+                    answer=f"The plumbing at 101 Galaxy Heights was last repaired on {latest['date']} by {latest['vendor']} (₹{latest['cost']:,.2f}). Issue: {latest['description']}",
                     data=issues,
                     query_type="maintenance_history"
                 )
@@ -375,6 +482,69 @@ async def get_analytics():
             "total_maintenance_cost": total_maintenance,
             "issues_by_category": by_category
         }
+
+@app.post("/api/upload")
+async def upload_file(file: UploadFile = File(...), property_id: str = Form(None), tenant_id: str = Form(None)):
+    try:
+        if not os.path.exists('uploads'):
+            os.makedirs('uploads')
+            
+        file_path = f"uploads/{file.filename}"
+        with open(file_path, "wb") as buffer:
+            content = await file.read()
+            buffer.write(content)
+            
+        # Determine doc type
+        doc_type = "lease" if "lease" in file.filename.lower() else "id_proof" if "pan" in file.filename.lower() or "aadhaar" in file.filename.lower() else "other"
+        
+        with get_db() as conn:
+            cursor = conn.cursor()
+            cursor.execute("""
+                INSERT INTO documents (filename, type, upload_date, size, property_id)
+                VALUES (?, ?, ?, ?, ?)
+            """, (file.filename, doc_type, datetime.now().strftime("%Y-%m-%d"), len(content), property_id or "Unassigned"))
+            conn.commit()
+            
+        return {"status": "success", "message": f"Uploaded {file.filename}"}
+    except Exception as e:
+        return {"status": "error", "message": str(e)}
+
+class PropertyCreate(BaseModel):
+    address: str
+    type: str
+    rent_amount: float
+    owner_name: str
+
+@app.post("/api/properties")
+async def create_property(prop: PropertyCreate):
+    import uuid
+    with get_db() as conn:
+        cursor = conn.cursor()
+        prop_id = f"prop_{str(uuid.uuid4())[:8]}"
+        cursor.execute("""
+            INSERT INTO properties (id, address, type, rent_amount, landlord_name)
+            VALUES (?, ?, ?, ?, ?)
+        """, (prop_id, prop.address, prop.type, prop.rent_amount, prop.owner_name))
+        conn.commit()
+    return {"status": "success", "message": "Property created"}
+
+@app.post("/api/qr")
+async def upload_qr(file: UploadFile = File(...)):
+    try:
+        # Save as static filename
+        with open("static/payment_qr.png", "wb") as buffer:
+            content = await file.read()
+            buffer.write(content)
+        return {"status": "success", "message": "QR Updated"}
+    except Exception as e:
+        return {"status": "error", "message": str(e)}
+
+@app.get("/api/qr")
+async def get_qr():
+    if os.path.exists("static/payment_qr.png"):
+        from fastapi.responses import FileResponse
+        return FileResponse("static/payment_qr.png")
+    return {"status": "error", "message": "No QR code"}
 
 if __name__ == "__main__":
     import uvicorn
