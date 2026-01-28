@@ -19,19 +19,27 @@ export const loginUser = async (email, password) => {
         const user = userCredential.user;
 
         // Get user profile from Firestore
-        const userDoc = await getDoc(doc(db, 'users', user.uid));
+        try {
+            const userDoc = await getDoc(doc(db, 'users', user.uid));
 
-        if (userDoc.exists()) {
-            return {
-                status: 'success',
-                user: {
-                    id: user.uid,
-                    email: user.email,
-                    ...userDoc.data()
-                }
-            };
-        } else {
-            throw new Error('User profile not found');
+            if (userDoc.exists()) {
+                return {
+                    status: 'success',
+                    user: {
+                        id: user.uid,
+                        email: user.email,
+                        ...userDoc.data()
+                    }
+                };
+            } else {
+                throw new Error('User profile not found');
+            }
+        } catch (firestoreError) {
+            console.error('Firestore error during login:', firestoreError);
+            if (firestoreError.code === 'permission-denied') {
+                throw new Error('Missing or insufficient permissions. Please ensure Firestore Security Rules are deployed.');
+            }
+            throw firestoreError;
         }
     } catch (error) {
         console.error('Login error:', error);
@@ -73,6 +81,12 @@ export const registerUser = async (email, password, userData) => {
         };
     } catch (error) {
         console.error('Registration error:', error);
+        if (error.code === 'permission-denied') {
+            return {
+                status: 'error',
+                message: 'Permission denied. Please ensure Firestore Security Rules are deployed.'
+            };
+        }
         return {
             status: 'error',
             message: error.message || 'Registration failed'
